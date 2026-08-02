@@ -205,24 +205,6 @@ graph.add_edge("final_agent", END)
 
 
 # =========================
-# PostgreSQL Checkpointer
-# =========================
-DATABASE_URL = get_database_url()
-
-_conn = psycopg.connect(
-    DATABASE_URL,
-    autocommit=True,
-    row_factory=dict_row
-)
-
-checkpointer = PostgresSaver(_conn)
-checkpointer.setup()
-
-travel_graph = graph.compile(checkpointer=checkpointer)
-
-
-
-# =========================
 # Function for FastAPI
 # =========================
 
@@ -236,27 +218,33 @@ def run_travel_agent(user_input: str, thread_id: str | None = None):
         }
     }
 
-    result = travel_graph.invoke(
-        {
-            "messages": [
-                HumanMessage(content=user_input)
-            ],
-            "user_query": user_input,
-            "flight_results": "",
-            "hotel_results": "",
-            "itinerary": "",
-            "llm_calls": 0
-        },
-        config=config
-    )
+    database_url = get_database_url()
 
-    final_answer = result["messages"][-1].content
+    with PostgresSaver.from_conn_string(database_url) as checkpointer:
+        checkpointer.setup()
+        travel_graph = graph.compile(checkpointer=checkpointer)
 
-    return {
-        "thread_id": thread_id,
-        "answer": final_answer,
-        "flight_results": result.get("flight_results", ""),
-        "hotel_results": result.get("hotel_results", ""),
-        "itinerary": result.get("itinerary", ""),
-        "llm_calls": result.get("llm_calls", 0),
-    }
+        result = travel_graph.invoke(
+            {
+                "messages": [
+                    HumanMessage(content=user_input)
+                ],
+                "user_query": user_input,
+                "flight_results": "",
+                "hotel_results": "",
+                "itinerary": "",
+                "llm_calls": 0
+            },
+            config=config
+        )
+
+        final_answer = result["messages"][-1].content
+
+        return {
+            "thread_id": thread_id,
+            "answer": final_answer,
+            "flight_results": result.get("flight_results", ""),
+            "hotel_results": result.get("hotel_results", ""),
+            "itinerary": result.get("itinerary", ""),
+            "llm_calls": result.get("llm_calls", 0),
+        }
